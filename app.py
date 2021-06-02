@@ -1,5 +1,6 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, request, flash, redirect
 from flask.helpers import url_for
+from sqlalchemy.orm import query
 from werkzeug.utils import escape
 from flask_sqlalchemy import SQLAlchemy
 
@@ -16,6 +17,8 @@ else:  # 否则使用四个斜线
 app = Flask(__name__)
 
 # 自定义指令，用于初始化db文件
+
+
 @app.cli.command()
 @click.option('--drop', is_flag=True, help='Create after drop')
 def initdb(drop):
@@ -27,6 +30,8 @@ def initdb(drop):
 # 在terminal中执行flask initdb 或 flask initdb --drop使用，注意不是在flask shell中执行
 
 # 自定义指令，用于向数据库添加测试数据
+
+
 @app.cli.command()
 def forge():
     click.echo('Inputing data to db...')
@@ -43,27 +48,30 @@ def forge():
         {'title': 'WALL-E', 'year': '2008'},
         {'title': 'The Pork of Music', 'year': '2012'},
     ]
-    user = User(name=name)    
+    user = User(name=name)
     db.session.add(user)
 
     for m in movies:
         db.session.add(Movie(title=m['title'], year=m['year']))
-    
+
     db.session.commit()
     click.echo('Finish!')
 
-app.config['SQLALCHEMY_DATABASE_URI'] = prefix + os.path.join(app.root_path, 'data.db') #connect to SQLite
-#app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql://root:admin@127.0.0.1/flask_db' #connect to MySql
+
+app.config['SQLALCHEMY_DATABASE_URI'] = prefix + \
+    os.path.join(app.root_path, 'data.db')  # connect to SQLite
+# app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql://root:admin@127.0.0.1/flask_db' #connect to MySql
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # 关闭对模型修改的监控
 
+app.config['SECRET_KEY'] = 'dev'
 
 db = SQLAlchemy(app)
-
 
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(20))
+
 
 class Movie(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -76,11 +84,26 @@ def inject_user():
     user = User.query.first()
     return {'user': user}
 
-@app.route('/')
+
+@app.route('/', methods=['GET', 'POST'])
 def index():
     #user = User.query.first()
+    if request.method == 'POST':
+        title = request.form.get('title')
+        year = request.form.get('year')
+        if not title or not year or len(year) > 4 or len(title) > 60:
+            flash('Invalid input')
+            return redirect(url_for('index'))
+        
+        movie = Movie(title=title, year=year)
+        db.session.add(movie)
+        db.session.commit()
+        flash('Item created')
+        return redirect(url_for('index'))
+
     movies = Movie.query.all()
     return render_template('index.html', movies=movies)
+
 
 @app.route('/user/<name>')
 def user_page(name):
@@ -91,17 +114,46 @@ def user_page(name):
       这样在返回响应时浏览器就不会把它们当做代码执行。
     '''
 
+
 @app.route('/test')
 def test_url_for():
-    print(url_for('hello'))
+    #print(url_for('hello'))
     print(url_for('user_page', name='wow'))
     print(url_for('test_url_for'))  # 输出：/test
     # 下面这个调用传入了多余的关键字参数，它们会被作为查询字符串附加到 URL 后面。
     print(url_for('test_url_for', num=2))  # 输出：/test?num=2
+
+    print(url_for('edit', movie_id=1))
     return 'Test page'
 
+@app.route('/movie/edit/<int:movie_id>', methods=['GET', 'POST'])
+def edit(movie_id):
+    movie = Movie.query.get_or_404(movie_id)
+    if request.method == 'POST':
+        title = request.form['title']
+        year = request.form['year']
+
+        if not title or not year or len(year) != 4 or len(title) > 60:
+            flash('Invalid input.')
+            return redirect(url_for('edit', movie_id=movie_id))
+        
+        movie.title = title
+        movie.year = year
+        db.session.commit()
+        flash('Item updated.')
+        return redirect(url_for('index'))
+
+    return render_template('edit.html', movie=movie)
+
+@app.route('/movie/delete/<int:movie_id>', methods=['POST'])
+def delete(movie_id):
+    movie = Movie.query.get_or_404(movie_id)
+    db.session.delete(movie)
+    db.session.commit()
+    flash('Item deleted.')
+    return redirect(url_for('index')) 
 
 @app.errorhandler(404)
 def page_not_found(e):
     #user = User.query.first()
-    return render_template('404.html'), 404 #在console中输出状态代码
+    return render_template('404.html'), 404  # 在console中输出状态代码
