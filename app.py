@@ -19,6 +19,7 @@ else:  # 否则使用四个斜线
 
 app = Flask(__name__)
 
+
 # 自定义指令，用于初始化db文件
 @app.cli.command()
 @click.option('--drop', is_flag=True, help='Create after drop')
@@ -54,7 +55,7 @@ def forge():
         db.session.add(Movie(title=m['title'], year=m['year']))
 
     db.session.commit()
-    click.echo('Finish!')
+    click.echo('Done.')
 
 
 # 自定义指令add user
@@ -134,13 +135,13 @@ def index():
         title = request.form.get('title')
         year = request.form.get('year')
         if not title or not year or len(year) > 4 or len(title) > 60:
-            flash('Invalid input')
+            flash('Invalid input.')
             return redirect(url_for('index'))
 
         movie = Movie(title=title, year=year)
         db.session.add(movie)
         db.session.commit()
-        flash('Item created')
+        flash('Item created.')
         return redirect(url_for('index'))
 
     movies = Movie.query.all()
@@ -237,7 +238,7 @@ def settings():
 
         if not name or len(name) > 20:
             flash('Invalid input.')
-            redirect(url_for('settings'))
+            return redirect(url_for('settings'))
 
         current_user.name = name
         db.session.commit()
